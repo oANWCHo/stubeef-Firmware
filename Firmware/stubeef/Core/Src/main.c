@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "arm_math.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,9 +45,63 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim5;
 
 /* USER CODE BEGIN PV */
+uint64_t upper = 0;
+uint64_t read = 0;
+float linearspeed = 0;
+
+uint32_t QEIReadRaw;
+float Degree;
+float Radian;
+float velodegree;
+
+typedef struct
+{
+// for record New / Old value to calculate dx / dt
+	uint32_t Position[2];
+	uint64_t TimeStamp[2];
+	float QEIPostion_1turn;
+	float QEIAngularVelocity;
+	uint16_t Angle;
+
+}QEI_StructureTypeDef;
+
+QEI_StructureTypeDef QEIdata = {0};
+uint64_t _micros = 0;
+
+enum
+{
+	NEW,OLD
+};
+
+
+//motor
+uint16_t duty_cycle = 2000;
+uint8_t DIR = 0;
+
+//LogicConv
+uint8_t Lo1 = 0;
+uint8_t Lo2 = 0;
+uint8_t Lo3 = 0;
+uint8_t Lo4 = 0;
+
+//Botton
+uint8_t bt1=0;
+uint8_t bt2=0;
+uint8_t bt3=0;
+uint8_t bt4=0;
+uint8_t bt5=0;
+
+//Limit
+uint8_t LimitTop = 0;
+uint8_t LimitBottom=0;
+
+//RelayWrite
+
 
 /* USER CODE END PV */
 
@@ -58,8 +112,17 @@ static void MX_LPUART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint64_t Micros();
+void QEIEncoderPosVel_Update();
+void ReadLogicConv();
+void ReadButton();
+void ReadLimit();
+void WritePins();
+void MotorDrive(int16_t x);
+void RelayDrive();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -99,7 +162,24 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
+  MX_TIM2_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+//  HAL_TIM_Base_Start(&htim4);
+//  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+//  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+//
+//  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 0);
+//  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 500);
+
+  	//pwm setup
+	HAL_TIM_Base_Start(&htim1);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0);
+
+	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_Base_Start_IT(&htim5);
+	upper = 0;
 
   /* USER CODE END 2 */
 
@@ -110,6 +190,39 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  // 63488 step/31rev
+//	  _micros = Micros();
+//	 QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim3);
+//	 Degree = QEIReadRaw*360/8192;
+//	 Radian = QEIReadRaw*(2*3.14)/8192;
+	 //Call every 0.1 s
+	 static uint64_t timestamp =0;
+	 int64_t currentTime = Micros();
+	 if(currentTime > timestamp)
+	 {
+		 timestamp =currentTime + 1000;//us
+		 QEIEncoderPosVel_Update();
+		 velodegree = QEIdata.QEIAngularVelocity;
+		 velodegree = (velodegree*60)/800;
+		 linearspeed = velodegree*14/60.0;
+
+//		 if(velodegree > 0){HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5,1);}
+//		 else{HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5,0);}
+	 }
+	 ReadLogicConv();
+	 ReadButton();
+	 ReadLimit();
+//	 MotorDrive(0);
+		if(bt1==0){
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+		}else if(bt2==0){
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+		}else{
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0);
+		}
+
   }
   /* USER CODE END 3 */
 }
@@ -275,9 +388,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
+  htim1.Init.Prescaler = 170-1;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 65535;
+  htim1.Init.Period = 4000;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -324,6 +437,51 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -377,6 +535,51 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 170-1;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 4294967295;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -394,13 +597,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, Relay1_Pin|DIROUT_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Relay2_Pin|Relay3_Pin|Relay4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -408,20 +611,20 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC1 PC2 PC6 PC7
-                           PC8 PC9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_6|GPIO_PIN_7
-                          |GPIO_PIN_8|GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PC3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  /*Configure GPIO pins : Relay1_Pin DIROUT_Pin */
+  GPIO_InitStruct.Pin = Relay1_Pin|DIROUT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LogicCon1_Pin LogicCon2_Pin LogicCon3_Pin BT3_Pin
+                           BT4_Pin BT5_Pin */
+  GPIO_InitStruct.Pin = LogicCon1_Pin|LogicCon2_Pin|LogicCon3_Pin|BT3_Pin
+                          |BT4_Pin|BT5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LD2_Pin */
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -430,18 +633,24 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB0 PB1 PB2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2;
+  /*Configure GPIO pins : LogicCon4_Pin LimitBottom_Pin */
+  GPIO_InitStruct.Pin = LogicCon4_Pin|LimitBottom_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Relay2_Pin Relay3_Pin Relay4_Pin */
+  GPIO_InitStruct.Pin = Relay2_Pin|Relay3_Pin|Relay4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA8 PA9 PA10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10;
+  /*Configure GPIO pins : LimitTop_Pin BT1_Pin BT2_Pin */
+  GPIO_InitStruct.Pin = LimitTop_Pin|BT1_Pin|BT2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
@@ -452,7 +661,84 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+if(htim == &htim5)
+{
+	upper+=1;
+	HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+}
+}
 
+uint64_t Micros(){
+//	static uint32_t timestamp = 0;
+	uint32_t lower = 0;
+	uint64_t time = 0;
+	lower = __HAL_TIM_GET_COUNTER(&htim5);
+	time = (upper<<32)|lower;
+	return time;
+}
+
+void QEIEncoderPosVel_Update()
+{
+	//collect data
+	QEIdata.TimeStamp[NEW] = Micros();
+	QEIdata.Position[NEW] = __HAL_TIM_GET_COUNTER(&htim3);
+	//Position 1 turn calculation
+	QEIdata.QEIPostion_1turn = QEIdata.Position[NEW] % 800;
+	QEIdata.Angle = QEIdata.QEIPostion_1turn*360/800;
+	//calculate dx
+	int32_t diffPosition = QEIdata.Position[NEW] - QEIdata.Position[OLD];
+	//Handle Warp around
+	if(diffPosition > 32400)diffPosition -= 64800;
+	if(diffPosition < -32400)diffPosition += 64800;
+	//calculate dt
+	float diffTime = (QEIdata.TimeStamp[NEW]-QEIdata.TimeStamp[OLD]) * 0.000001;
+	//calculate anglar velocity
+	QEIdata.QEIAngularVelocity = diffPosition / diffTime;
+	//store value for next loop
+	QEIdata.Position[OLD] = QEIdata.Position[NEW];
+	QEIdata.TimeStamp[OLD] = QEIdata.TimeStamp[NEW];
+}
+
+void ReadLogicConv(){
+	Lo1 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);//Lo1
+	Lo2 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);//Lo2
+	Lo3 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4);//Lo3
+	Lo4 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0);//Lo4
+}
+
+void ReadButton(){
+	bt1 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_8);//BT1
+	bt2 = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_9);//BT2
+	bt3 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_8);//BT3
+	bt4 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);//BT4
+	bt5 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_10);//BT5
+}
+
+void ReadLimit(){
+	LimitTop = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7);// LimitTop
+	LimitBottom = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);// LimitBottom
+
+}
+
+void MotorDrive(int16_t x){
+//	if(x>0){
+	if(DIR>0){
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
+	}else{
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
+	}
+
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+}
+
+void RelayDrive(){
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, 1);// Relay1
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1);// Relay1
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);// Relay1
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1);// Relay1
+}
 /* USER CODE END 4 */
 
 /**

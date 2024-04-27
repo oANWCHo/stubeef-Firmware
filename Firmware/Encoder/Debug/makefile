@@ -60,8 +60,8 @@ all: main-build
 main-build: Encoder.elf secondary-outputs
 
 # Tool invocations
-Encoder.elf Encoder.map: $(OBJS) $(USER_OBJS) D:\KMUTT\FIBO\year\ 2\2\FRA262\Firmware\Encoder\STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Encoder.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\KMUTT\FIBO\year 2\2\FRA262\Firmware\Encoder\STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Encoder.elf Encoder.map: $(OBJS) $(USER_OBJS) D:\KMUTT\FIBO\year\ 2\2\FRA262\stubeef-Firmware\Firmware\Encoder\STM32G474RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Encoder.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\KMUTT\FIBO\year 2\2\FRA262\stubeef-Firmware\Firmware\Encoder\STM32G474RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
