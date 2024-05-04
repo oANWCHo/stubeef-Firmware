@@ -53,6 +53,8 @@ TIM_HandleTypeDef htim5;
 uint64_t upper = 0;
 uint64_t read = 0;
 float linearspeed = 0;
+uint8_t numOfRound = 0;
+uint32_t realPos = 0;
 
 uint32_t QEIReadRaw;
 float Degree;
@@ -64,9 +66,11 @@ typedef struct
 // for record New / Old value to calculate dx / dt
 	uint32_t Position[2];
 	uint64_t TimeStamp[2];
-	float QEIPostion_1turn;
+	float QEIPostion_1turn[2];
 	float QEIAngularVelocity;
-	uint16_t Angle;
+	float Angle;
+	float TotalPos;
+	float QEIRound;
 
 }QEI_StructureTypeDef;
 
@@ -98,11 +102,15 @@ uint8_t bt5=0;
 
 //Limit
 uint8_t LimitTop = 0;
-uint8_t LimitBottom=0;
-
+uint8_t LimitBottom = 0;
+uint8_t x = 0;
 //RelayWrite
 
-
+arm_pid_instance_f32 PID = {0};
+float Vfeedback;
+float Goal;
+uint16_t duty_cycle_pid;
+uint8_t mode = 1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -121,7 +129,7 @@ void ReadLogicConv();
 void ReadButton();
 void ReadLimit();
 void WritePins();
-void MotorDrive(int16_t x);
+void MotorDrive();
 void RelayDrive();
 /* USER CODE END PFP */
 
@@ -181,6 +189,11 @@ int main(void)
 	HAL_TIM_Base_Start_IT(&htim5);
 	upper = 0;
 
+	PID.Kp =0.1;
+	PID.Ki =0.0;
+	PID.Kd = 0.0;
+	arm_pid_init_f32(&PID, 0);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -192,28 +205,47 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	  // 63488 step/31rev
 //	  _micros = Micros();
-//	 QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim3);
+
 //	 Degree = QEIReadRaw*360/8192;
 //	 Radian = QEIReadRaw*(2*3.14)/8192;
 	 //Call every 0.1 s
 	 static uint64_t timestamp =0;
 	 int64_t currentTime = Micros();
+	 ReadLimit();
 	 if(currentTime > timestamp)
 	 {
-		 timestamp =currentTime + 1000;//us
+		 timestamp =currentTime + 10;//us
+//		 QEIReadRaw = __HAL_TIM_GET_COUNTER(&htim3);
 		 QEIEncoderPosVel_Update();
+//		 uint32_t diffPos = QEIdata.Position[1] - QEIdata.Position[0];
+//
+//
+//		 if (diffPos > 100 ) {
+//			 numOfRound -= 1;
+//		 }
+//		 if (diffPos < -100) {
+//			 numOfRound += 1;
+//		 }
+
+		 realPos = QEIReadRaw + numOfRound * 200;
 		 velodegree = QEIdata.QEIAngularVelocity;
 		 velodegree = (velodegree*60)/800;
 		 linearspeed = velodegree*14/60.0;
 
 //		 if(velodegree > 0){HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5,1);}
 //		 else{HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5,0);}
+
+
 	 }
 	 ReadLogicConv();
-	 ReadButton();
-	 ReadLimit();
+	 if(mode == 1){
+		 ReadButton();
+	 }else if (mode ==2){
+		 MotorDrive();
+	 }
+//	 ReadButton();
 //	 MotorDrive(0);
-		if(bt1==0){
+		if(bt3==0){
 			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
 			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
 		}else if(bt2==0){
@@ -222,6 +254,8 @@ int main(void)
 		}else{
 			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0);
 		}
+
+
 
   }
   /* USER CODE END 3 */
@@ -506,10 +540,10 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 0;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Period = 64799;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -685,20 +719,36 @@ void QEIEncoderPosVel_Update()
 	QEIdata.TimeStamp[NEW] = Micros();
 	QEIdata.Position[NEW] = __HAL_TIM_GET_COUNTER(&htim3);
 	//Position 1 turn calculation
-	QEIdata.QEIPostion_1turn = QEIdata.Position[NEW] % 800;
-	QEIdata.Angle = QEIdata.QEIPostion_1turn*360/800;
+	QEIdata.QEIPostion_1turn[NEW] = QEIdata.Position[NEW] % 800;
+	QEIdata.Angle = QEIdata.QEIPostion_1turn[NEW]*360/800;
 	//calculate dx
 	int32_t diffPosition = QEIdata.Position[NEW] - QEIdata.Position[OLD];
+	int32_t diff1turn = QEIdata.QEIPostion_1turn[NEW]-QEIdata.QEIPostion_1turn[OLD];
 	//Handle Warp around
-	if(diffPosition > 32400)diffPosition -= 64800;
-	if(diffPosition < -32400)diffPosition += 64800;
+	if(diffPosition > 32400){
+		diffPosition -= 64800;
+		}
+	if(diffPosition < -32400){
+		diffPosition += 64800;
+	}
+	//Calculate Linear Position in mm unit
+	if(diff1turn > 400){
+			QEIdata.QEIRound -= 1;
+		}
+	if(diff1turn < -400){
+			QEIdata.QEIRound += 1;
+		}
+	QEIdata.TotalPos = (QEIdata.QEIRound*14) + QEIdata.QEIPostion_1turn[NEW]*14/800; //linear pos in mm uint
+
 	//calculate dt
-	float diffTime = (QEIdata.TimeStamp[NEW]-QEIdata.TimeStamp[OLD]) * 0.000001;
+	float diffTime = (QEIdata.TimeStamp[NEW]-QEIdata.TimeStamp[OLD]) * 0.00001;
 	//calculate anglar velocity
 	QEIdata.QEIAngularVelocity = diffPosition / diffTime;
 	//store value for next loop
 	QEIdata.Position[OLD] = QEIdata.Position[NEW];
 	QEIdata.TimeStamp[OLD] = QEIdata.TimeStamp[NEW];
+	QEIdata.QEIPostion_1turn[OLD] = QEIdata.QEIPostion_1turn[NEW];
+
 }
 
 void ReadLogicConv(){
@@ -717,20 +767,29 @@ void ReadButton(){
 }
 
 void ReadLimit(){
-	LimitTop = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7);// LimitTop
-	LimitBottom = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);// LimitBottom
+	LimitBottom = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7);// LimitTop
+	LimitTop = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);// LimitBottom
 
 }
 
-void MotorDrive(int16_t x){
-//	if(x>0){
-	if(DIR>0){
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
-	}else{
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
+void MotorDrive(){
+	Vfeedback = arm_pid_f32(&PID, Goal - QEIdata.TotalPos);
+	if(Vfeedback > 12){
+		Vfeedback = 12;
 	}
+	if(Vfeedback < -12){
+		Vfeedback = -12;
+	}
+	//if(Vfeedback < 0.3  )
 
-	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+	if(Vfeedback>0){
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
+		}else{
+			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
+			Vfeedback = Vfeedback*(-1);
+		}
+	duty_cycle_pid = Vfeedback*4000/12;
+	__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle_pid);
 }
 
 void RelayDrive(){
