@@ -100,6 +100,11 @@ uint8_t bt3=0;
 uint8_t bt4=0;
 uint8_t bt5=0;
 
+uint8_t ro1=0;
+uint8_t ro2=0;
+uint8_t ro3=0;
+uint8_t ro4=0;
+
 //Limit
 uint8_t LimitTop = 0;
 uint8_t LimitBottom = 0;
@@ -151,7 +156,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -238,22 +244,28 @@ int main(void)
 
 	 }
 	 ReadLogicConv();
-	 if(mode == 1){
-		 ReadButton();
-	 }else if (mode ==2){
-		 MotorDrive();
-	 }
+	 ReadButton();
+//	 RelayDrive();
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, ro1);// Relay1
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, ro2);// Relay1
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, ro3);// Relay1
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, ro4);// Relay1
+//	 if(mode == 1){
+//		 ReadButton();
+//	 }else if (mode ==2){
+//		 MotorDrive();
+//	 }
 //	 ReadButton();
 //	 MotorDrive(0);
-		if(bt3==0){
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
-		}else if(bt2==0){
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
-		}else{
-			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0);
-		}
+//		if(bt3==0){
+//			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,1);
+//			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+//		}else if(bt2==0){
+//			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_3,0);
+//			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,duty_cycle);
+//		}else{
+//			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,0);
+//		}
 
 
 
@@ -771,6 +783,7 @@ void ReadLimit(){
 	LimitTop = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);// LimitBottom
 
 }
+
 
 void MotorDrive(){
 	Vfeedback = arm_pid_f32(&PID, Goal - QEIdata.TotalPos);

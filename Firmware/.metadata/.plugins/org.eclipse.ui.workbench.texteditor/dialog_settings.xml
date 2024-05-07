@@ -1,25 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="BEGIN 4"/>
+		<item key="selection" value="MotorDrive"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
-			<item value="Begin 4"/>
-			<item value="Begin 1"/>
-			<item value="begin 2"/>
-			<item value="begin 4"/>
+			<item value="MotorDrive"/>
+			<item value="Begin 3"/>
+			<item value="DIR"/>
+			<item value="bt2"/>
+			<item value="duty_cycle"/>
+			<item value="Begin 2"/>
+			<item value="PID"/>
+			<item value="BEGIN3"/>
+			<item value="TotalPos"/>
+			<item value="Position"/>
 			<item value="begin 3"/>
+			<item value="begin"/>
+			<item value="periodela"/>
+			<item value="period"/>
+			<item value="QEIPostion_1turn"/>
 		</list>
 		<list key="replacehistory">
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
-		<item key="DIALOG_X_ORIGIN" value="1036"/>
-		<item key="DIALOG_Y_ORIGIN" value="347"/>
+		<item key="DIALOG_X_ORIGIN" value="44"/>
+		<item key="DIALOG_Y_ORIGIN" value="452"/>
 		<item key="DIALOG_WIDTH" value="511"/>
 		<item key="DIALOG_HEIGHT" value="523"/>
 		<item key="DIALOG_FONT_NAME" value="1|Segoe UI|9.0|0|WINDOWS|1|-18|0|0|0|400|0|0|0|1|0|0|0|0|Segoe UI"/>

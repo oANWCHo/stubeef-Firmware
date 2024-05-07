@@ -15,5 +15,13 @@ bt5
 LimitTop
 LimitBottom
 DIR
-duty_cycle
+duty_cycle_pid
 linearspeed
+x
+realPos
+numOfRound
+Goal
+mode
+Vfeedback
+QEIdata.TotalPos
+duty_cycle
